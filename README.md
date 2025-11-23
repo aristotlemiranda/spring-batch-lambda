@@ -1,8 +1,39 @@
 # spring-batch-lambda
 Spring Batch On Lambda with Sample Usage of SAM and Local Docker Run
 
+## Project Structure
 
-#Lambda Local Testing Using Docker
+### Dockerfile
+Custom Lambda container using Amazon Linux 2023 with Amazon Corretto JDK 21:
+- **Base Image**: `amazonlinux:2023` for better control and security
+- **JDK**: Amazon Corretto 21 (AWS's optimized OpenJDK distribution)
+- **Security**: Runs as non-root user `netsbiz-lambda-runner`
+- **Lambda Runtime**: AWS Lambda Runtime Interface Emulator for local testing
+- **JAR Extraction**: Extracts Spring Boot fat JAR to `/var/task` for Lambda compatibility
+
+#### Required Package Installations:
+- **`java-21-amazon-corretto-devel`**: Full JDK with development tools (includes `jar` command for extracting JAR files)
+- **`curl`**: Downloads AWS Lambda Runtime Interface Emulator from GitHub
+- **`shadow-utils`**: Provides user management commands (`groupadd`, `useradd`) for creating non-root user
+- **Why needed**: Amazon Linux 2023 base image is minimal and doesn't include these tools by default
+
+### template.yaml
+SAM (Serverless Application Model) template for AWS deployment:
+- **Function Definition**: Defines `BatchLambdaDemo` Lambda function
+- **Runtime**: Java 21 for better performance and faster cold starts
+- **Handler**: Points to `BatchLambdaHandler::handleRequest` method
+- **Resources**: 1024MB memory, 30s timeout
+- **API Gateway**: Optional HTTP endpoint at `/batch` for REST API access
+
+### event.json
+Sample input event for testing Lambda function locally:
+- **Purpose**: Simulates Lambda event payload
+- **Format**: JSON object with key-value pairs
+- **Usage**: Used by SAM CLI for local function invocation
+- **Customizable**: Modify to test different input scenarios
+
+## Lambda Local Testing Using Docker
+```bash
 # Build and run
 mvn clean package -DskipTests
 docker build -t batch-lambda-demo .
@@ -10,12 +41,10 @@ docker run -d -p 9000:8080 batch-lambda-demo
 
 # Test with curl
 curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"key1":"value1","key2":"value2"}'
+```
 
-
-
-
-#Lambda Local Testing using SAM
-
+## Lambda Local Testing using SAM
+```bash
 # Direct function invocation
 sam local invoke BatchLambdaDemo -e event.json
 
@@ -24,6 +53,7 @@ sam local start-api
 
 # Test via HTTP
 curl -X POST http://localhost:3000/batch -d '{"key1":"value1"}'
+```
 
 
 

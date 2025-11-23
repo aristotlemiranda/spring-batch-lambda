@@ -1,8 +1,8 @@
 FROM amazonlinux:2023
 
-# Install Amazon Corretto 21 (full JDK with jar command)
+# Install Amazon Corretto 21 (full JDK with jar command) and shadow-utils for user management
 RUN yum update -y && \
-    yum install -y java-21-amazon-corretto-devel && \
+    yum install -y java-21-amazon-corretto-devel shadow-utils && \
     yum clean all
 
 # Install AWS Lambda Runtime Interface Client
@@ -16,12 +16,20 @@ ENV LAMBDA_RUNTIME_DIR=/var/runtime
 ENV JAVA_HOME=/usr/lib/jvm/java-21-amazon-corretto
 ENV PATH=$PATH:$JAVA_HOME/bin
 
-# Create task directory
-RUN mkdir -p ${LAMBDA_TASK_ROOT}
+# Create non-root user
+RUN groupadd -r netsbiz && useradd -r -g netsbiz netsbiz-lambda-runner
 
-# Copy and extract the JAR file
+# Create task directory and set permissions
+RUN mkdir -p ${LAMBDA_TASK_ROOT} && \
+    chown -R netsbiz-lambda-runner:netsbiz ${LAMBDA_TASK_ROOT}
+
+# Copy and extract the JAR file (as root)
 COPY target/batch-lambda-demo-0.0.1-SNAPSHOT.jar /tmp/app.jar
-RUN cd ${LAMBDA_TASK_ROOT} && jar -xf /tmp/app.jar && rm /tmp/app.jar
+RUN cd ${LAMBDA_TASK_ROOT} && jar -xf /tmp/app.jar && rm /tmp/app.jar && \
+    chown -R netsbiz-lambda-runner:netsbiz ${LAMBDA_TASK_ROOT}
+
+# Switch to non-root user
+USER netsbiz-lambda-runner
 
 # Set working directory
 WORKDIR ${LAMBDA_TASK_ROOT}
