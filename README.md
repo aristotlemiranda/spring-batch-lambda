@@ -43,6 +43,25 @@ docker run -d -p 9000:8080 batch-lambda-demo
 curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" -d '{"key1":"value1","key2":"value2"}'
 ```
 
+## Lambda Production Deployment
+
+### Dockerfile.prod
+Optimized Lambda container for AWS production deployment:
+- **No RIE**: Removes Lambda Runtime Interface Emulator (not needed in production)
+- **Smaller Image**: Eliminates curl and RIE download (~10MB savings)
+- **Same Functionality**: Identical runtime behavior in AWS Lambda
+- **Security**: Maintains non-root user setup
+
+```bash
+# Build production image
+mvn clean package -DskipTests
+docker build -f Dockerfile.prod -t batch-lambda-prod .
+
+# Deploy to ECR and Lambda
+docker tag batch-lambda-prod:latest <account-id>.dkr.ecr.us-east-1.amazonaws.com/batch-lambda-prod:latest
+docker push <account-id>.dkr.ecr.us-east-1.amazonaws.com/batch-lambda-prod:latest
+```
+
 ## Lambda Local Testing using SAM
 ```bash
 # Direct function invocation
@@ -53,6 +72,88 @@ sam local start-api
 
 # Test via HTTP
 curl -X POST http://localhost:3000/batch -d '{"key1":"value1"}'
+```
+
+## ECS Deployment
+
+### Dockerfile.ecs
+Optimized container for AWS ECS/Fargate deployment:
+- **Base Image**: `amazonlinux:2023` with minimal packages
+- **JDK**: Amazon Corretto 21 headless (smaller footprint)
+- **JAR Structure**: Uses Spring Boot fat JAR directly (no extraction needed)
+- **Security**: Runs as `netsbiz-batch-runner` user
+- **Port**: Exposes 8080 for health checks
+
+```bash
+# Build ECS image
+mvn clean package -DskipTests
+docker build -f Dockerfile.ecs -t batch-ecs-demo .
+
+# Run locally for testing
+docker run -p 8080:8080 batch-ecs-demo
+```
+
+### Key Differences: Lambda vs ECS Dockerfiles
+
+| Feature | Lambda (Dockerfile) | ECS (Dockerfile.ecs) |
+|---------|--------------------|--------------------||
+| **Purpose** | AWS Lambda container runtime | Standard containerized application |
+| **JDK** | Full devel (needs `jar` command) | Headless (smaller footprint) |
+| **JAR Structure** | Extracted to `/var/task` | Fat JAR at `/app/app.jar` |
+| **Runtime** | Lambda RIE + custom entry | Standard `java -jar` |
+| **User** | `netsbiz-lambda-runner` | `netsbiz-batch-runner` |
+| **Dependencies** | `curl` for Lambda RIE | Minimal packages |
+| **Entry Point** | Lambda-specific runtime client | Direct Spring Boot execution |
+
+### ECS Fargate Storage Requirements
+
+**Non-root users need proper storage configuration:**
+
+#### Task Definition Example:
+```json
+{
+  "family": "batch-demo",
+  "taskRoleArn": "arn:aws:iam::account:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::account:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "batch-container",
+      "image": "your-ecr-repo/batch-ecs-demo:latest",
+      "user": "999:999",
+      "mountPoints": [
+        {
+          "sourceVolume": "tmp-storage",
+          "containerPath": "/tmp",
+          "readOnly": false
+        }
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "name": "tmp-storage",
+      "host": {}
+    }
+  ]
+}
+```
+
+#### Why Storage Matters:
+- **H2 Database**: Needs `/tmp` write access for in-memory database files
+- **Spring Boot**: Creates temporary files during startup
+- **Batch Processing**: May need temp space for file processing
+
+#### Alternative: EFS for Persistent Storage:
+```json
+"volumes": [
+  {
+    "name": "batch-storage",
+    "efsVolumeConfiguration": {
+      "fileSystemId": "fs-12345678",
+      "transitEncryption": "ENABLED"
+    }
+  }
+]
 ```
 
 
