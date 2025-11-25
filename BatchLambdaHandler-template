@@ -1,0 +1,25 @@
+public class BatchLambdaHandler implements RequestHandler<Object, String> {
+    private ConfigurableApplicationContext ctx;
+
+    @Override
+    public String handleRequest(Object input, Context context) {
+        ConfigurableApplicationContext localCtx = null;
+        try {
+            SpringApplication app = new SpringApplication(BatchLambdaDemoApplication.class);
+            app.setWebApplicationType(WebApplicationType.NONE);
+            localCtx = app.run();
+
+            JobLauncher jobLauncher = localCtx.getBean(JobLauncher.class);
+            Job job = localCtx.getBean("sampleJob", Job.class);
+            
+            JobExecution execution = jobLauncher.run(job, new JobParameters());
+            return "Batch completed with exit code: " + execution.getExitStatus().getExitCode();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to execute: " + e.getMessage(), e);
+        } finally {
+            if (localCtx != null) {
+                localCtx.close();
+            }
+        }
+    }
+}
